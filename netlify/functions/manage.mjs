@@ -18,12 +18,14 @@ export const handler = async (event) => {
       const id = String(body.assessment_id || '').trim();
       const date = String(body.date || '');
       const rows = Array.isArray(body.rows) ? body.rows : [];
-      const maxes = [body.max_ib_lp, body.max_isp_lp, body.max_ib_doc].map(Number);
+      const maxes = [body.max_ib_lp, body.max_isp_lp, body.max_ib_doc].map(v =>
+        v === null || v === undefined || String(v).trim() === '' ? null : Number(v));
       const labels = ['IB-LP', 'ISP-LP', 'IB Document'];
 
       if (!id || id.length > 40) return json(400, { error: 'Enter an assessment ID (maximum 40 characters).' });
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json(400, { error: 'Choose a valid date.' });
-      if (maxes.some(m => !Number.isFinite(m) || m <= 0)) return json(400, { error: 'Enter a maximum score above 0 for IB-LP, ISP-LP and IB Document.' });
+      if (maxes.some(m => m !== null && (!Number.isFinite(m) || m <= 0))) return json(400, { error: 'A maximum score must be a number above 0, or left blank.' });
+      if (maxes.every(m => m === null)) return json(400, { error: 'Enter a maximum score for at least one of IB-LP, ISP-LP or IB Document.' });
       if (!rows.length) return json(400, { error: 'The CSV has no teacher rows.' });
       if (rows.length > 500) return json(400, { error: 'Too many rows (maximum 500).' });
 
@@ -37,6 +39,7 @@ export const handler = async (event) => {
         const vals = [mark(r.ib_lp), mark(r.isp_lp), mark(r.ib_doc)];
         for (let k = 0; k < 3; k++) {
           if (Number.isNaN(vals[k])) return json(400, { error: `Row ${i + 1} (${name}): ${labels[k]} mark must be a number (or blank).` });
+          if (vals[k] !== null && maxes[k] === null) return json(400, { error: `Row ${i + 1} (${name}): ${labels[k]} has no maximum score, so its column must be blank.` });
           if (vals[k] !== null && vals[k] > maxes[k]) return json(400, { error: `Row ${i + 1} (${name}): ${labels[k]} mark ${vals[k]} is above the maximum ${maxes[k]}.` });
         }
         teachers.push(name); a.push(vals[0]); b.push(vals[1]); c.push(vals[2]);
