@@ -65,6 +65,13 @@ export const handler = async (event) => {
       return json(200, { ok: true, deleted: removed.length });
     }
 
+    if (body.action === 'deleteTeacher') {
+      const name = String(body.teacher || '').trim();
+      if (!name) return json(400, { error: 'Select a teacher.' });
+      const removed = await sql`DELETE FROM test_marks WHERE teacher = ${name} RETURNING 1`;
+      return json(200, { ok: true, deleted: removed.length });
+    }
+
     return json(400, { error: 'Unknown action.' });
   } catch (error) {
     console.error('manage endpoint:', error);
