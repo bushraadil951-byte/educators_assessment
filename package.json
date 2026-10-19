@@ -1,0 +1,10 @@
+{
+  "name": "ib-educator-performance-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "IB educator assessment performance dashboard for Netlify + Neon PostgreSQL",
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.2"
+  }
+}

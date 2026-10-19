@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin | Teacher Marks</title>
+<style>
+  body{margin:0;background:#f5efe0;color:#222;font-family:Georgia,'Times New Roman',serif}
+  .wrap{max-width:560px;margin:0 auto;padding:26px 16px 40px}
+  h1{font-size:24px;text-align:center;margin:0;letter-spacing:2px;text-transform:uppercase}
+  .sub{text-align:center;font-style:italic;margin:6px 0 14px}
+  .rule{border:0;border-top:3px double #222;margin:0 0 22px}
+  label{display:block;margin:14px 0 4px;font-size:14px}
+  input{font:inherit;width:100%;box-sizing:border-box;padding:8px;border:1px solid #222;background:#fbf7ec;color:#222}
+  button{font:inherit;margin-top:18px;padding:8px 22px;border:1px solid #222;background:#222;color:#f5efe0;cursor:pointer}
+  button.plain{background:none;color:#222;padding:5px 14px;margin:0}
+  .three{display:flex;gap:10px}
+  .three>div{flex:1}
+  .mini{display:block;font-size:12px;font-style:italic;margin-bottom:3px}
+  .hint{font-size:13px;font-style:italic;margin-top:6px}
+  #msg{margin-top:16px;padding:8px 10px;border:1px solid #222;display:none}
+  #msg.error{background:#f3d9d4}
+  #msg.ok{background:#dfe8d2}
+  .links{display:flex;justify-content:space-between;font-size:13px;margin-top:34px}
+  .links a,.links button{color:#222}
+  a{color:#222}
+  .del{border-top:1px solid #222;margin-top:34px;padding-top:6px}
+  .row{display:flex;gap:8px;align-items:end}
+  .row input{flex:1}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Admin</h1>
+  <div class="sub">Eastern Public School</div>
+  <hr class="rule">
+
+  <form id="loginForm" hidden>
+    <label for="pw">Password</label>
+    <input id="pw" type="password" autocomplete="current-password" required>
+    <button type="submit">Sign in</button>
+  </form>
+
+  <div id="panel" hidden>
+    <form id="importForm">
+      <label for="aid">Assessment ID</label>
+      <input id="aid" maxlength="40" placeholder="e.g. 001" required>
+
+      <label for="adate">Date</label>
+      <input id="adate" type="date" required>
+
+      <label>Maximum score</label>
+      <div class="three">
+        <div><span class="mini">IB-LPs</span><input id="m1" type="number" min="0.01" step="0.01" required></div>
+        <div><span class="mini">ISP-LPs</span><input id="m2" type="number" min="0.01" step="0.01" required></div>
+        <div><span class="mini">IB Document</span><input id="m3" type="number" min="0.01" step="0.01" required></div>
+      </div>
+
+      <label for="file">Marks (CSV file)</label>
+      <input id="file" type="file" accept=".csv,text/csv" required>
+      <div class="hint">Four columns: Teacher Name, IB LP, ISP LP, IB Document marks.
+        Leave a cell blank if the test was not attempted. <a href="#" id="sample">Download sample</a></div>
+
+      <button type="submit">Import</button>
+    </form>
+
+    <form id="delForm" class="del">
+      <label for="did">Delete an assessment (by ID)</label>
+      <div class="row">
+        <input id="did" placeholder="e.g. 001" required>
+        <button class="plain" type="submit">Delete</button>
+      </div>
+    </form>
+  </div>
+
+  <div id="msg"></div>
+
+  <div class="links">
+    <a href="/">← Back to marks</a>
+    <button id="logout" class="plain" hidden>Sign out</button>
+  </div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const API = '/.netlify/functions/';
+
+function say(text, kind) { const m = $('msg'); m.textContent = text; m.className = kind; m.style.display = 'block'; }
+
+async function api(name, opts = {}) {
+  const res = await fetch(API + name, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, ...opts });
+  let data = {}; try { data = await res.json(); } catch {}
+  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  return data;
+}
+
+function show(signedIn) {
+  $('loginForm').hidden = signedIn; $('panel').hidden = !signedIn; $('logout').hidden = !signedIn;
+}
+
+// ---- CSV ----
+function parseCsv(text) {
+  text = text.replace(/^\uFEFF/, '');
+  const out = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; }
+    else if (c === '"') q = true;
+    else if (c === ',') { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(cell); out.push(row); row = []; cell = ''; }
+    else cell += c;
+  }
+  if (cell !== '' || row.length) { row.push(cell); out.push(row); }
+  return out.filter(r => r.some(x => x.trim() !== ''));
+}
+// first row is a header if any marks cell holds text instead of a number
+const isHeader = r => [1, 2, 3].some(i => r[i] && r[i].trim() && isNaN(Number(r[i])));
+
+// ---- events ----
+$('loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  try { await api('login', { method: 'POST', body: JSON.stringify({ password: $('pw').value }) }); $('pw').value = ''; $('msg').style.display = 'none'; show(true); }
+  catch (err) { say(err.message, 'error'); }
+});
+
+$('logout').addEventListener('click', async () => { try { await api('login', { method: 'DELETE' }); } catch {} show(false); $('msg').style.display = 'none'; });
+
+$('importForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  try {
+    const parsed = parseCsv(await $('file').files[0].text());
+    if (parsed.length && isHeader(parsed[0])) parsed.shift();
+    const rows = parsed.map(r => ({ teacher: r[0], ib_lp: r[1], isp_lp: r[2], ib_doc: r[3] }));
+    const r = await api('manage', { method: 'POST', body: JSON.stringify({ action: 'import', assessment_id: $('aid').value, date: $('adate').value, max_ib_lp: $('m1').value, max_isp_lp: $('m2').value, max_ib_doc: $('m3').value, rows }) });
+    say(`Assessment ${$('aid').value.trim()}: ${r.imported} teachers imported.` + (r.replaced ? ' (Replaced the earlier import for this ID.)' : ''), 'ok');
+    $('file').value = '';
+  } catch (err) { say(err.message, 'error'); }
+});
+
+$('delForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const id = $('did').value.trim();
+  if (!confirm(`Delete all marks for assessment ${id}? This cannot be undone.`)) return;
+  try {
+    const r = await api('manage', { method: 'POST', body: JSON.stringify({ action: 'deleteAssessment', assessment_id: id }) });
+    say(r.deleted ? `Assessment ${id} deleted.` : `No assessment with ID ${id} was found.`, r.deleted ? 'ok' : 'error');
+    $('did').value = '';
+  } catch (err) { say(err.message, 'error'); }
+});
+
+$('sample').addEventListener('click', e => {
+  e.preventDefault();
+  const csv = 'Teacher Name,IB LP Marks,ISP LP Marks,IB Document Marks\r\nAyesha Khan,8,7,9\r\nRahul Sharma,6,,7\r\n';
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'sample-marks.csv'; a.click();
+});
+
+$('adate').value = new Date().toISOString().slice(0, 10);
+(async () => { try { show((await api('login')).authenticated); } catch { show(false); } })();
+</script>
+</body>
+</html>

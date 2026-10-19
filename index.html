@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IB Teacher Marks | Eastern Public School</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+<style>
+  body{margin:0;background:#f5efe0;color:#222;font-family:Georgia,'Times New Roman',serif}
+  .wrap{max-width:980px;margin:0 auto;padding:26px 16px 40px}
+  h1{font-size:26px;text-align:center;margin:0;letter-spacing:2px;text-transform:uppercase;font-weight:bold}
+  .sub{text-align:center;font-style:italic;margin:6px 0 14px}
+  .rule{border:0;border-top:3px double #222;margin:0}
+  .bar{display:flex;gap:16px;align-items:end;flex-wrap:wrap;border:1px solid #222;background:#fbf7ec;padding:14px;margin:22px 0}
+  .bar .f{flex:1;min-width:220px}
+  .bar label{display:block;font-size:14px;font-weight:bold;margin-bottom:6px}
+  select{font:inherit;width:100%;padding:9px;border:1px solid #222;background:#fff;color:#222}
+  .switch button{font:inherit;background:none;border:1px solid #222;padding:8px 16px;cursor:pointer;color:#222}
+  .switch button.on{background:#222;color:#f5efe0}
+  .box{position:relative;height:380px;border:1px solid #222;background:#fbf7ec;padding:8px}
+  .msg{text-align:center;font-style:italic;margin:40px 0}
+  footer{text-align:center;margin-top:40px;font-size:13px}
+  footer a{color:#222}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Teacher Marks</h1>
+  <div class="sub">Eastern Public School</div>
+  <hr class="rule">
+
+  <div class="bar">
+    <div class="f"><label for="teacher">Teacher</label>
+      <select id="teacher"><option value="">Select teacher</option></select></div>
+    <div class="switch"><button id="bLine" class="on" type="button">Line</button><button id="bBar" type="button">Bar</button></div>
+  </div>
+
+  <div id="msg" class="msg">Loading…</div>
+  <div id="box" class="box" hidden><canvas id="chart"></canvas></div>
+
+  <footer><a href="/admin.html">Admin</a></footer>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const CATS = [
+  { key: 'ib_lp',  max: 'max_ib_lp',  label: 'IB-LP',       color: '#7a2e2e' },
+  { key: 'isp_lp', max: 'max_isp_lp', label: 'ISP-LP',      color: '#2e4a7a' },
+  { key: 'ib_doc', max: 'max_ib_doc', label: 'IB Document', color: '#3d6b3d' }
+];
+let tests = [], marks = [], type = 'line', chart = null;
+
+Chart.defaults.font.family = "Georgia, 'Times New Roman', serif";
+Chart.defaults.color = '#222';
+
+function draw() {
+  if (chart) { chart.destroy(); chart = null; }
+  const name = $('teacher').value;
+  if (!name) { $('box').hidden = true; $('msg').hidden = false; $('msg').textContent = 'Select a teacher to see the graph.'; return; }
+
+  const mine = new Map(marks.filter(m => m.teacher === name).map(m => [m.test_id, m]));
+  const list = tests.filter(t => mine.has(t.test_id));          // all assessments for this teacher, in date order
+  $('msg').hidden = true; $('box').hidden = false;
+
+  const raw = {};                                                // keep raw marks for tooltips
+  const datasets = CATS.map(c => {
+    raw[c.label] = list.map(t => mine.get(t.test_id)[c.key]);
+    return {
+      label: c.label,
+      data: list.map((t, i) => raw[c.label][i] == null ? null : Math.round(raw[c.label][i] / t[c.max] * 1000) / 10),
+      borderColor: c.color, backgroundColor: c.color, borderWidth: 2, tension: 0, spanGaps: true, pointRadius: 4
+    };
+  });
+
+  chart = new Chart($('chart'), {
+    type,
+    data: { labels: list.map(t => t.test_id), datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        title: { display: true, text: name, font: { size: 16 } },
+        legend: { position: 'bottom', labels: { boxWidth: 12 } },
+        tooltip: { callbacks: {
+          title: items => { const t = list[items[0].dataIndex]; return `Assessment ${t.test_id} · ${t.date}`; },
+          label: ctx => { const t = list[ctx.dataIndex], c = CATS[ctx.datasetIndex];
+            return `${c.label}: ${raw[c.label][ctx.dataIndex]} / ${t[c.max]} (${ctx.parsed.y}%)`; }
+        } }
+      },
+      scales: {
+        y: { min: 0, max: 100, ticks: { callback: v => v + '%' }, grid: { color: '#e4dcc6' } },
+        x: { title: { display: true, text: 'Assessment ID' }, grid: { display: false } }
+      }
+    }
+  });
+}
+
+function setType(t) {
+  type = t;
+  $('bLine').classList.toggle('on', t === 'line');
+  $('bBar').classList.toggle('on', t === 'bar');
+  draw();
+}
+$('bLine').onclick = () => setType('line');
+$('bBar').onclick = () => setType('bar');
+$('teacher').onchange = draw;
+
+(async () => {
+  try {
+    const res = await fetch('/.netlify/functions/data');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not load marks.');
+    tests = data.tests || []; marks = data.marks || [];
+    const names = [...new Set(marks.map(m => m.teacher))].sort((a, b) => a.localeCompare(b));
+    $('teacher').innerHTML = '<option value="">Select teacher</option>' + names.map(n => `<option>${n.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</option>`).join('');
+    $('msg').textContent = names.length ? 'Select a teacher to see the graph.' : 'No marks have been entered yet.';
+  } catch (e) { $('msg').textContent = e.message; }
+})();
+</script>
+</body>
+</html>
