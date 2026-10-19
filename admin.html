@@ -105,6 +105,17 @@ async function api(name, opts = {}) {
 
 function show(signedIn) {
   $('loginForm').hidden = signedIn; $('panel').hidden = !signedIn; $('logout').hidden = !signedIn;
+  if (signedIn) loadTeachers();
+}
+
+async function loadTeachers() {
+  try {
+    const data = await api('data');
+    const names = [...new Set((data.marks || []).map(m => m.teacher))].sort((a, b) => a.localeCompare(b));
+    const sel = $('tsel');
+    sel.length = 1;
+    names.forEach(n => sel.add(new Option(n, n)));
+  } catch {}
 }
 
 // ---- CSV ----
@@ -156,7 +167,16 @@ $('delForm').addEventListener('submit', async e => {
     $('did').value = '';
   } catch (err) { say(err.message, 'error'); }
 });
-
+$('tForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const name = $('tsel').value;
+  if (!name || !confirm(`Delete ${name} and all their marks? This cannot be undone.`)) return;
+  try {
+    const r = await api('manage', { method: 'POST', body: JSON.stringify({ action: 'deleteTeacher', teacher: name }) });
+    say(r.deleted ? `${name} deleted (${r.deleted} marks rows removed).` : `${name} was not found.`, r.deleted ? 'ok' : 'error');
+    loadTeachers();
+  } catch (err) { say(err.message, 'error'); }
+});
 $('sample').addEventListener('click', e => {
   e.preventDefault();
   const csv = 'Teacher Name,IB LP Marks,ISP LP Marks,IB Document Marks\r\nAyesha Khan,8,7,9\r\nRahul Sharma,6,,7\r\n';
