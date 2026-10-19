@@ -64,7 +64,24 @@
 
       <button type="submit">Import</button>
     </form>
+    <form id="oneForm" class="del">
+      <label for="oaid">Add / update one teacher</label>
+      <select id="oaid" required><option value="">Select assessment</option></select>
 
+      <label for="oname">Teacher name</label>
+      <input id="oname" list="tnames" maxlength="120" autocomplete="off" required>
+      <datalist id="tnames"></datalist>
+
+      <label>Marks (leave blank if not attempted)</label>
+      <div class="three">
+        <div><span class="mini">IB-LPs</span><input id="o1" type="number" min="0" step="0.01"></div>
+        <div><span class="mini">ISP-LPs</span><input id="o2" type="number" min="0" step="0.01"></div>
+        <div><span class="mini">IB Document</span><input id="o3" type="number" min="0" step="0.01"></div>
+      </div>
+
+      <button type="submit">Save</button>
+      <div class="hint">If this teacher already has marks for the assessment, they are replaced.</div>
+    </form>
     <form id="delForm" class="del">
       <label for="did">Delete an assessment (by ID)</label>
       <div class="row">
