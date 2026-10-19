@@ -154,6 +154,7 @@ $('importForm').addEventListener('submit', async e => {
     const r = await api('manage', { method: 'POST', body: JSON.stringify({ action: 'import', assessment_id: $('aid').value, date: $('adate').value, max_ib_lp: $('m1').value, max_isp_lp: $('m2').value, max_ib_doc: $('m3').value, rows }) });
     say(`Assessment ${$('aid').value.trim()}: ${r.imported} teachers imported.` + (r.replaced ? ' (Replaced the earlier import for this ID.)' : ''), 'ok');
     $('file').value = '';
+    loadTeachers();
   } catch (err) { say(err.message, 'error'); }
 });
 
@@ -165,6 +166,7 @@ $('delForm').addEventListener('submit', async e => {
     const r = await api('manage', { method: 'POST', body: JSON.stringify({ action: 'deleteAssessment', assessment_id: id }) });
     say(r.deleted ? `Assessment ${id} deleted.` : `No assessment with ID ${id} was found.`, r.deleted ? 'ok' : 'error');
     $('did').value = '';
+    loadTeachers();
   } catch (err) { say(err.message, 'error'); }
 });
 $('tForm').addEventListener('submit', async e => {
