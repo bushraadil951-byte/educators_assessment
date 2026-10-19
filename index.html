@@ -98,11 +98,14 @@ function draw() {
 
   // graphs 1-3: one per category
   CATS.forEach((c, k) => {
-    const pts = list.map(t => {
-      const v = mine.get(t.test_id)[c.key];
+    // only assessments where at least one teacher has a mark for this category
+    const held = new Set(marks.filter(m => m[c.key] != null).map(m => m.test_id));
+    const shown = list.filter(t => held.has(t.test_id));
+    const pts = shown.map(t => {
+      const v = (mine.get(t.test_id) || {})[c.key];
       return v == null ? null : { pct: round(v / t[c.max] * 100), text: `${v} / ${t[c.max]}` };
     });
-    charts.push(makeChart('c' + k, c.label, c.color, list, pts));
+    charts.push(makeChart('c' + k, c.label, c.color, shown, pts));
   });
 
   // graph 4: overall % = total marks / total maximum, over the categories attempted in that assessment
