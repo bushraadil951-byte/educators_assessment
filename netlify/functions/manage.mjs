@@ -57,7 +57,35 @@ export const handler = async (event) => {
       ]);
       return json(200, { ok: true, imported: teachers.length, replaced: removed.length > 0 });
     }
+    if (body.action === 'saveMark') {
+      const id = String(body.assessment_id || '').trim();
+      let name = String(body.teacher || '').trim().replace(/\s+/g, ' ');
+      if (!id) return json(400, { error: 'Select an assessment.' });
+      if (!name || name.length > 120) return json(400, { error: 'Enter the teacher name.' });
 
+      const [t] = await sql`SELECT max_ib_lp::float8 AS a, max_isp_lp::float8 AS b, max_ib_doc::float8 AS c FROM tests WHERE test_id = ${id}`;
+      if (!t) return json(400, { error: 'That assessment does not exist. Create it first with the CSV import.' });
+
+      const maxes = [t.a, t.b, t.c];
+      const labels = ['IB-LP', 'ISP-LP', 'IB Document'];
+      const vals = [mark(body.ib_lp), mark(body.isp_lp), mark(body.ib_doc)];
+      for (let k = 0; k < 3; k++) {
+        if (Number.isNaN(vals[k])) return json(400, { error: `${labels[k]} mark must be a number (or blank).` });
+        if (vals[k] !== null && maxes[k] === null) return json(400, { error: `${labels[k]} was not held in this assessment, so leave it blank.` });
+        if (vals[k] !== null && vals[k] > maxes[k]) return json(400, { error: `${labels[k]} mark ${vals[k]} is above the maximum ${maxes[k]}.` });
+      }
+      if (vals.every(v => v === null)) return json(400, { error: 'Enter at least one mark.' });
+
+      // reuse the spelling already saved for this teacher (ignores capital letters)
+      const [ex] = await sql`SELECT teacher FROM test_marks WHERE lower(teacher) = lower(${name}) LIMIT 1`;
+      if (ex) name = ex.teacher;
+      const [prev] = await sql`SELECT 1 AS x FROM test_marks WHERE test_id = ${id} AND teacher = ${name}`;
+      await sql`INSERT INTO test_marks (test_id, teacher, ib_lp, isp_lp, ib_doc)
+                VALUES (${id}, ${name}, ${vals[0]}, ${vals[1]}, ${vals[2]})
+                ON CONFLICT (test_id, teacher)
+                DO UPDATE SET ib_lp = EXCLUDED.ib_lp, isp_lp = EXCLUDED.isp_lp, ib_doc = EXCLUDED.ib_doc`;
+      return json(200, { ok: true, teacher: name, updated: !!prev });
+    }
     if (body.action === 'deleteAssessment') {
       const id = String(body.assessment_id || '').trim();
       if (!id) return json(400, { error: 'Enter an assessment ID.' });
