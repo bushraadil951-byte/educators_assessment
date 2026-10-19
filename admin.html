@@ -129,9 +129,21 @@ async function loadTeachers() {
   try {
     const data = await api('data');
     const names = [...new Set((data.marks || []).map(m => m.teacher))].sort((a, b) => a.localeCompare(b));
+
     const sel = $('tsel');
     sel.length = 1;
     names.forEach(n => sel.add(new Option(n, n)));
+
+    const dl = $('tnames');
+    dl.innerHTML = '';
+    names.forEach(n => dl.appendChild(new Option(n, n)));
+
+    const oa = $('oaid'), keep = oa.value;
+    oa.length = 1;
+    [...(data.tests || [])]
+      .sort((a, b) => b.date.localeCompare(a.date) || b.test_id.localeCompare(a.test_id, undefined, { numeric: true }))
+      .forEach(t => oa.add(new Option(`${t.test_id} · ${t.date} · max ${t.max_ib_lp ?? '–'} / ${t.max_isp_lp ?? '–'} / ${t.max_ib_doc ?? '–'}`, t.test_id)));
+    oa.value = keep;
   } catch {}
 }
 
@@ -193,6 +205,17 @@ $('tForm').addEventListener('submit', async e => {
   try {
     const r = await api('manage', { method: 'POST', body: JSON.stringify({ action: 'deleteTeacher', teacher: name }) });
     say(r.deleted ? `${name} deleted (${r.deleted} marks rows removed).` : `${name} was not found.`, r.deleted ? 'ok' : 'error');
+    loadTeachers();
+  } catch (err) { say(err.message, 'error'); }
+});
+$('oneForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  try {
+    const r = await api('manage', { method: 'POST', body: JSON.stringify({
+      action: 'saveMark', assessment_id: $('oaid').value, teacher: $('oname').value,
+      ib_lp: $('o1').value, isp_lp: $('o2').value, ib_doc: $('o3').value }) });
+    say(`${r.teacher}: marks ${r.updated ? 'updated' : 'saved'} for assessment ${$('oaid').value}.`, 'ok');
+    $('oname').value = ''; ['o1', 'o2', 'o3'].forEach(id => $(id).value = '');
     loadTeachers();
   } catch (err) { say(err.message, 'error'); }
 });
