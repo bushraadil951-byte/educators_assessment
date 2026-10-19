@@ -1,10 +1,13 @@
 {
-  "name": "ib-educator-performance-dashboard",
-  "version": "1.0.0",
+  "name": "ib-teacher-marks",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "IB educator assessment performance dashboard for Netlify + Neon PostgreSQL",
+  "description": "IB teacher marks dashboard (Express + Neon PostgreSQL), for Render",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" },
   "dependencies": {
-    "@neondatabase/serverless": "^1.0.2"
+    "@neondatabase/serverless": "^1.0.2",
+    "express": "^4.21.2"
   }
 }
