@@ -22,6 +22,9 @@
   .msg{text-align:center;font-style:italic;margin:40px 0}
   footer{text-align:center;margin-top:40px;font-size:13px}
   footer a{color:#222}
+  .act{display:flex;justify-content:flex-end;margin:0 0 14px}
+  .act button{font:inherit;background:none;border:1px solid #222;padding:8px 16px;cursor:pointer;color:#222}
+  .act button:hover{background:#222;color:#f5efe0}
   [hidden]{display:none!important}
 </style>
 </head>
@@ -39,6 +42,9 @@
 
   <div id="msg" class="msg">Loading…</div>
   <div id="box" hidden>
+    <div class="act">
+      <button id="bCsv" type="button">Download report</button>
+    </div>
     <h2>IB Learner Profiles (IB-LPs)</h2><div class="box"><canvas id="c0"></canvas></div>
     <h2>ISP Learner Profiles (ISP-LPs)</h2><div class="box"><canvas id="c1"></canvas></div>
     <h2>IB Document</h2><div class="box"><canvas id="c2"></canvas></div>
@@ -117,6 +123,41 @@ function draw() {
   charts.push(makeChart('c3', 'Overall', '#5a3a6b', list, overall));
 }
 
+const csvCell = v => {
+  const s = v == null ? '' : String(v);
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+};
+
+function downloadReport() {
+  const name = $('teacher').value;
+  if (!name) return;
+  const mine = new Map(marks.filter(m => m.teacher === name).map(m => [m.test_id, m]));
+  const list = tests.filter(t => mine.has(t.test_id));
+  const head = ['Teacher', 'Assessment ID', 'Date'];
+  CATS.forEach(c => head.push(`${c.label} marks`, `${c.label} max`, `${c.label} %`));
+  head.push('Overall marks', 'Overall max', 'Overall %');
+  const rows = [head];
+  list.forEach(t => {
+    const m = mine.get(t.test_id);
+    const row = [name, t.test_id, t.date];
+    let got = 0, max = 0;
+    CATS.forEach(c => {
+      const v = m[c.key];
+      if (v == null || !t[c.max]) { row.push('', '', ''); return; }
+      row.push(v, t[c.max], round(v / t[c.max] * 100));
+      got += v; max += t[c.max];
+    });
+    row.push(max ? round(got) : '', max ? round(max) : '', max ? round(got / max * 100) : '');
+    rows.push(row);
+  });
+  const csv = '\ufeff' + rows.map(r => r.map(csvCell).join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = 'report_' + name.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_') + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
 function setType(t) {
   type = t;
   $('bLine').classList.toggle('on', t === 'line');
@@ -126,6 +167,7 @@ function setType(t) {
 $('bLine').onclick = () => setType('line');
 $('bBar').onclick = () => setType('bar');
 $('teacher').onchange = draw;
+$('bCsv').onclick = downloadReport;
 
 (async () => {
   try {
