@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>IB Teacher Marks | Eastern Public School</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
 <style>
   body{margin:0;background:#f5efe0;color:#222;font-family:Georgia,'Times New Roman',serif}
   .wrap{max-width:980px;margin:0 auto;padding:26px 16px 40px}
@@ -22,7 +23,8 @@
   .msg{text-align:center;font-style:italic;margin:40px 0}
   footer{text-align:center;margin-top:40px;font-size:13px}
   footer a{color:#222}
-  .act{display:flex;justify-content:flex-end;margin:0 0 14px}
+  .act{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end;margin:0 0 14px}
+  .act span{font-size:14px;font-style:italic;margin-right:auto}
   .act button{font:inherit;background:none;border:1px solid #222;padding:8px 16px;cursor:pointer;color:#222}
   .act button:hover{background:#222;color:#f5efe0}
   [hidden]{display:none!important}
@@ -40,10 +42,17 @@
     <div class="switch"><button id="bLine" class="on" type="button">Line</button><button id="bBar" type="button">Bar</button></div>
   </div>
 
+  <div id="allAct" class="act" hidden>
+    <span>Collected report of all teachers</span>
+    <button id="bAllPdf" type="button">Download all (PDF)</button>
+    <button id="bAllCsv" type="button">Download all (CSV)</button>
+  </div>
+
   <div id="msg" class="msg">Loading…</div>
   <div id="box" hidden>
     <div class="act">
-      <button id="bCsv" type="button">Download report</button>
+      <span>Report of this teacher</span>
+      <button id="bPdf" type="button">Download report (PDF)</button>
     </div>
     <h2>IB Learner Profiles (IB-LPs)</h2><div class="box"><canvas id="c0"></canvas></div>
     <h2>ISP Learner Profiles (ISP-LPs)</h2><div class="box"><canvas id="c1"></canvas></div>
@@ -123,40 +132,152 @@ function draw() {
   charts.push(makeChart('c3', 'Overall', '#5a3a6b', list, overall));
 }
 
+/* ---------- reports ---------- */
+
+const allNames = () => [...new Set(marks.map(m => m.teacher))].sort((a, b) => a.localeCompare(b));
+const fileSafe = s => s.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_');
+
+// one entry per assessment this teacher took part in, with the overall total
+function rowsFor(name) {
+  const mine = new Map(marks.filter(m => m.teacher === name).map(m => [m.test_id, m]));
+  return tests.filter(t => mine.has(t.test_id)).map(t => {
+    const m = mine.get(t.test_id);
+    let got = 0, max = 0;
+    CATS.forEach(c => { const v = m[c.key]; if (v != null && t[c.max]) { got += v; max += t[c.max]; } });
+    return { t, m, got, max };
+  });
+}
+
+function saveBlob(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+/* ----- CSV (all teachers) ----- */
+
 const csvCell = v => {
   const s = v == null ? '' : String(v);
   return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 };
 
-function downloadReport() {
-  const name = $('teacher').value;
-  if (!name) return;
-  const mine = new Map(marks.filter(m => m.teacher === name).map(m => [m.test_id, m]));
-  const list = tests.filter(t => mine.has(t.test_id));
+function downloadAllCsv() {
   const head = ['Teacher', 'Assessment ID', 'Date'];
   CATS.forEach(c => head.push(`${c.label} marks`, `${c.label} max`, `${c.label} %`));
   head.push('Overall marks', 'Overall max', 'Overall %');
   const rows = [head];
-  list.forEach(t => {
-    const m = mine.get(t.test_id);
-    const row = [name, t.test_id, t.date];
-    let got = 0, max = 0;
-    CATS.forEach(c => {
-      const v = m[c.key];
-      if (v == null || !t[c.max]) { row.push('', '', ''); return; }
-      row.push(v, t[c.max], round(v / t[c.max] * 100));
-      got += v; max += t[c.max];
+  allNames().forEach(name => {
+    rowsFor(name).forEach(({ t, m, got, max }) => {
+      const row = [name, t.test_id, t.date];
+      CATS.forEach(c => {
+        const v = m[c.key];
+        if (v == null || !t[c.max]) { row.push('', '', ''); return; }
+        row.push(v, t[c.max], round(v / t[c.max] * 100));
+      });
+      row.push(max ? round(got) : '', max ? round(max) : '', max ? round(got / max * 100) : '');
+      rows.push(row);
     });
-    row.push(max ? round(got) : '', max ? round(max) : '', max ? round(got / max * 100) : '');
-    rows.push(row);
   });
   const csv = '\ufeff' + rows.map(r => r.map(csvCell).join(',')).join('\r\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-  a.download = 'report_' + name.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_') + '.csv';
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  saveBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), 'all_teachers_report.csv');
 }
+
+/* ----- PDF ----- */
+
+const PL = 15, PW = 180;   // left margin and usable width in mm
+const PCOLS = [['Assessment', 24], ['Date', 26], ['IB-LP', 32], ['ISP-LP', 32], ['IB Document', 34], ['Overall', 32]];
+
+function startPdf(title) {
+  if (!window.jspdf) { alert('PDF library could not load. Please check your internet connection and refresh the page.'); return null; }
+  const doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4' });
+  const p = { doc, y: 18 };
+  doc.setFont('times', 'bold'); doc.setFontSize(16);
+  doc.text("PYP EDUCATORS' ASSESSMENT RECORD", 105, p.y, { align: 'center' });
+  p.y += 6; doc.setFont('times', 'italic'); doc.setFontSize(11);
+  doc.text('Eastern Public School', 105, p.y, { align: 'center' });
+  p.y += 4; doc.setLineWidth(0.5); doc.line(PL, p.y, PL + PW, p.y);
+  p.y += 8; doc.setFont('times', 'bold'); doc.setFontSize(13);
+  doc.text(title, PL, p.y);
+  doc.setFont('times', 'normal'); doc.setFontSize(10);
+  doc.text('Generated: ' + new Date().toLocaleDateString('en-GB'), PL + PW, p.y, { align: 'right' });
+  p.y += 8;
+  return p;
+}
+
+function need(p, h) {
+  if (p.y + h > 285) { p.doc.addPage(); p.y = 18; }
+}
+
+const pdfCell = (v, mx) => (v == null || !mx) ? '-' : `${v}/${mx} (${round(v / mx * 100)}%)`;
+
+function pdfRow(p, cells, bold) {
+  need(p, 8);
+  p.doc.setFont('times', bold ? 'bold' : 'normal'); p.doc.setFontSize(9);
+  let x = PL;
+  cells.forEach((c, i) => { p.doc.text(String(c), x, p.y); x += PCOLS[i][1]; });
+  p.y += 2; p.doc.setLineWidth(bold ? 0.4 : 0.1); p.doc.line(PL, p.y, PL + PW, p.y);
+  p.y += 5;
+}
+
+// table of assessments for one teacher
+function pdfTable(p, name) {
+  pdfRow(p, PCOLS.map(c => c[0]), true);
+  rowsFor(name).forEach(({ t, m, got, max }) => {
+    pdfRow(p, [
+      t.test_id, t.date,
+      pdfCell(m.ib_lp, t.max_ib_lp), pdfCell(m.isp_lp, t.max_isp_lp), pdfCell(m.ib_doc, t.max_ib_doc),
+      max ? `${round(got)}/${round(max)} (${round(got / max * 100)}%)` : '-'
+    ], false);
+  });
+}
+
+// report of the selected teacher: table + the four graphs
+function downloadTeacherPdf() {
+  const name = $('teacher').value;
+  if (!name) return;
+  const p = startPdf('Teacher: ' + name);
+  if (!p) return;
+
+  pdfTable(p, name);
+  p.y += 4;
+
+  ['IB Learner Profiles (IB-LPs)', 'ISP Learner Profiles (ISP-LPs)', 'IB Document', 'Overall Percentage'].forEach((title, k) => {
+    const cv = $('c' + k);
+    let w = PW, h = PW * cv.height / cv.width;
+    if (h > 80) { h = 80; w = h * cv.width / cv.height; }
+    need(p, h + 12);
+    p.doc.setFont('times', 'bold'); p.doc.setFontSize(11);
+    p.doc.text(title, PL, p.y);
+    p.y += 2;
+    p.doc.addImage(cv.toDataURL('image/png'), 'PNG', PL + (PW - w) / 2, p.y, w, h);
+    p.y += h + 8;
+  });
+
+  p.doc.save('report_' + fileSafe(name) + '.pdf');
+}
+
+// collected report: every teacher, one table each
+function downloadAllPdf() {
+  const names = allNames();
+  if (!names.length) return;
+  const p = startPdf('All teachers (' + names.length + ')');
+  if (!p) return;
+
+  names.forEach(name => {
+    need(p, 30);
+    p.doc.setFont('times', 'bold'); p.doc.setFontSize(12);
+    p.doc.text(name, PL, p.y);
+    p.y += 5;
+    pdfTable(p, name);
+    p.y += 6;
+  });
+
+  p.doc.save('all_teachers_report.pdf');
+}
+
+/* ---------- wiring ---------- */
 
 function setType(t) {
   type = t;
@@ -167,7 +288,9 @@ function setType(t) {
 $('bLine').onclick = () => setType('line');
 $('bBar').onclick = () => setType('bar');
 $('teacher').onchange = draw;
-$('bCsv').onclick = downloadReport;
+$('bPdf').onclick = downloadTeacherPdf;
+$('bAllPdf').onclick = downloadAllPdf;
+$('bAllCsv').onclick = downloadAllCsv;
 
 (async () => {
   try {
@@ -175,8 +298,9 @@ $('bCsv').onclick = downloadReport;
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Could not load marks.');
     tests = data.tests || []; marks = data.marks || [];
-    const names = [...new Set(marks.map(m => m.teacher))].sort((a, b) => a.localeCompare(b));
+    const names = allNames();
     $('teacher').innerHTML = '<option value="">Select teacher</option>' + names.map(n => `<option>${n.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</option>`).join('');
+    $('allAct').hidden = !names.length;
     $('msg').textContent = names.length ? 'Select a teacher to see the graphs.' : 'No marks have been entered yet.';
   } catch (e) { $('msg').textContent = e.message; }
 })();
