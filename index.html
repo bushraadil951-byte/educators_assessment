@@ -42,12 +42,6 @@
     <div class="switch"><button id="bLine" class="on" type="button">Line</button><button id="bBar" type="button">Bar</button></div>
   </div>
 
-  <div id="allAct" class="act" hidden>
-    <span>Collected report of all teachers</span>
-    <button id="bAllPdf" type="button">Download all (PDF)</button>
-    <button id="bAllCsv" type="button">Download all (CSV)</button>
-  </div>
-
   <div id="msg" class="msg">Loading…</div>
   <div id="box" hidden>
     <div class="act">
@@ -148,42 +142,6 @@ function rowsFor(name) {
   });
 }
 
-function saveBlob(blob, filename) {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-}
-
-/* ----- CSV (all teachers) ----- */
-
-const csvCell = v => {
-  const s = v == null ? '' : String(v);
-  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-};
-
-function downloadAllCsv() {
-  const head = ['Teacher', 'Assessment ID', 'Date'];
-  CATS.forEach(c => head.push(`${c.label} marks`, `${c.label} max`, `${c.label} %`));
-  head.push('Overall marks', 'Overall max', 'Overall %');
-  const rows = [head];
-  allNames().forEach(name => {
-    rowsFor(name).forEach(({ t, m, got, max }) => {
-      const row = [name, t.test_id, t.date];
-      CATS.forEach(c => {
-        const v = m[c.key];
-        if (v == null || !t[c.max]) { row.push('', '', ''); return; }
-        row.push(v, t[c.max], round(v / t[c.max] * 100));
-      });
-      row.push(max ? round(got) : '', max ? round(max) : '', max ? round(got / max * 100) : '');
-      rows.push(row);
-    });
-  });
-  const csv = '\ufeff' + rows.map(r => r.map(csvCell).join(',')).join('\r\n');
-  saveBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), 'all_teachers_report.csv');
-}
-
 /* ----- PDF ----- */
 
 const PL = 15, PW = 180;   // left margin and usable width in mm
@@ -258,25 +216,6 @@ function downloadTeacherPdf() {
   p.doc.save('report_' + fileSafe(name) + '.pdf');
 }
 
-// collected report: every teacher, one table each
-function downloadAllPdf() {
-  const names = allNames();
-  if (!names.length) return;
-  const p = startPdf('All teachers (' + names.length + ')');
-  if (!p) return;
-
-  names.forEach(name => {
-    need(p, 30);
-    p.doc.setFont('times', 'bold'); p.doc.setFontSize(12);
-    p.doc.text(name, PL, p.y);
-    p.y += 5;
-    pdfTable(p, name);
-    p.y += 6;
-  });
-
-  p.doc.save('all_teachers_report.pdf');
-}
-
 /* ---------- wiring ---------- */
 
 function setType(t) {
@@ -289,8 +228,6 @@ $('bLine').onclick = () => setType('line');
 $('bBar').onclick = () => setType('bar');
 $('teacher').onchange = draw;
 $('bPdf').onclick = downloadTeacherPdf;
-$('bAllPdf').onclick = downloadAllPdf;
-$('bAllCsv').onclick = downloadAllCsv;
 
 (async () => {
   try {
@@ -300,7 +237,6 @@ $('bAllCsv').onclick = downloadAllCsv;
     tests = data.tests || []; marks = data.marks || [];
     const names = allNames();
     $('teacher').innerHTML = '<option value="">Select teacher</option>' + names.map(n => `<option>${n.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</option>`).join('');
-    $('allAct').hidden = !names.length;
     $('msg').textContent = names.length ? 'Select a teacher to see the graphs.' : 'No marks have been entered yet.';
   } catch (e) { $('msg').textContent = e.message; }
 })();
